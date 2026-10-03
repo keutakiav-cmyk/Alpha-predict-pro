@@ -7,10 +7,12 @@ app = Flask(__name__)
 
 API_KEY = "9f5c2c6459133767334f05de9c35a72d"
 
+# Base de données recalibrée sur les vraies cotes du marché (Espagne à moins de 1.10)
 MATCHS_DATA = [
+    {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie', 'c_safe': 1.08, 'p_safe': 'Double Chance 1X', 'c_mix': 1.55, 'p_mix': 'V1 & +2.5 buts (Victoire Espagne)'},
     {'ligue': 'Ligue des Nations', 'match': 'Croatie - Angleterre', 'c_safe': 1.42, 'p_safe': 'Double Chance 1X', 'c_mix': 3.10, 'p_mix': 'V2 & +2.5 buts (Victoire Angleterre)'},
-    {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie', 'c_safe': 1.48, 'p_safe': 'Plus de 1.5 buts', 'c_mix': 2.85, 'p_mix': 'V1 & Les deux marquent (Victoire Espagne)'},
-    {'ligue': 'Ligue des Nations', 'match': 'Suisse - Slovénie', 'c_safe': 1.38, 'p_safe': 'Double Chance 1X', 'c_mix': 2.20, 'p_mix': 'Victoire Directe V1 (Suisse)'}
+    {'ligue': 'Ligue des Nations', 'match': 'Suisse - Slovénie', 'c_safe': 1.38, 'p_safe': 'Plus de 1.5 buts', 'c_mix': 2.20, 'p_mix': 'Victoire Directe V1 (Suisse)'},
+    {'ligue': 'Série A Brésil', 'match': 'Botafogo - Cuiaba', 'c_safe': 1.35, 'p_safe': 'Double Chance 1X', 'c_mix': 2.10, 'p_mix': 'V1 & Moins de 3.5 buts'}
 ]
 
 @app.route('/')
@@ -54,7 +56,10 @@ def dashboard():
 
 @app.route('/tickets')
 def tickets():
-    cote_safe = round(MATCHS_DATA[0]['c_safe'] * MATCHS_DATA[1]['c_safe'] * MATCHS_DATA[2]['c_safe'], 2)
+    # MULTIPLICATION EN DIRECT SUR 4 MATCHS POUR GARDER UN TICKET CONFIANCE RENTABLE AVEC L'ESPAGNE À 1.08
+    cote_safe = round(MATCHS_DATA[0]['c_safe'] * MATCHS_DATA[1]['c_safe'] * MATCHS_DATA[2]['c_safe'] * MATCHS_DATA[3]['c_safe'], 2)
+    
+    # MIX UNIQUE CHOC INTER (Espagne Combo + Croatie Combo)
     cote_mix = round(MATCHS_DATA[0]['c_mix'] * MATCHS_DATA[1]['c_mix'], 2)
     
     html_page = f'''
@@ -80,17 +85,18 @@ def tickets():
             
             <div class="section-title" style="border-left-color: #00ff88;">👑 1. Le Ticket Confiance (Safe)</div>
             <div class="combine-box">
-                <div style="font-size: 28px; font-weight: bold; color: #00ff88;">Cote Globale : {cote_safe}</div>
-                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Croatie - Angleterre -> {MATCHS_DATA[0]['p_safe']} (Cote: {MATCHS_DATA[0]['c_safe']})</p>
-                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Espagne - Tchéquie -> {MATCHS_DATA[1]['p_safe']} (Cote: {MATCHS_DATA[1]['c_safe']})</p>
+                <div style="font-size: 28px; font-weight: bold; color: #00ff88;">VRAIE COTE GLOBALE : {cote_safe}</div>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Espagne - Tchéquie -> {MATCHS_DATA[0]['p_safe']} (Cote: {MATCHS_DATA[0]['c_safe']})</p>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Croatie - Angleterre -> {MATCHS_DATA[1]['p_safe']} (Cote: {MATCHS_DATA[1]['c_safe']})</p>
                 <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Suisse - Slovénie -> {MATCHS_DATA[2]['p_safe']} (Cote: {MATCHS_DATA[2]['c_safe']})</p>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Botafogo - Cuiaba -> {MATCHS_DATA[3]['p_safe']} (Cote: {MATCHS_DATA[3]['c_safe']})</p>
             </div>
 
             <div class="section-title">🔥 2. Le Combiné Grandes Cotes (Mix)</div>
             <div class="combine-box gold">
-                <div style="font-size: 28px; font-weight: bold; color: #ffaa00;">Cote Globale : {cote_mix}</div>
-                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Croatie - Angleterre -> <b>{MATCHS_DATA[0]['p_mix']}</b></p>
-                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Espagne - Tchéquie -> <b>{MATCHS_DATA[1]['p_mix']}</b></p>
+                <div style="font-size: 28px; font-weight: bold; color: #ffaa00;">VRAIE COTE GLOBALE : {cote_mix}</div>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Espagne - Tchéquie -> <b>{MATCHS_DATA[0]['p_mix']}</b> (Cote: {MATCHS_DATA[0]['c_mix']})</p>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Croatie - Angleterre -> <b>{MATCHS_DATA[1]['p_mix']}</b> (Cote: {MATCHS_DATA[1]['c_mix']})</p>
             </div>
 
             <div class="section-title" style="border-left-color: #00e1ff;">⚽ 3. Le Combiné Machine à Buts</div>
@@ -118,4 +124,3 @@ def tickets():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
