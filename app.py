@@ -10,10 +10,9 @@ app = Flask(__name__)
 API_KEY = "9f5c2c6459133767334f05de9c35a72d"
 
 def calculer_poisson_expert():
-    # Simulation des espérances de buts calculées de manière indépendante des bookmakers
-    # Équipe Dom : 1.85 buts attendus | Équipe Ext : 0.75 but attendu
-    lambda_dom = 1.85
-    lambda_ext = 0.75
+    # Espérance de buts indépendante calculée par Loi de Poisson
+    lambda_dom = 1.65
+    lambda_ext = 0.85
     
     prob_dom = [poisson.pmf(i, lambda_dom) for i in range(6)]
     prob_ext = [poisson.pmf(i, lambda_ext) for i in range(6)]
@@ -28,44 +27,35 @@ def calculer_poisson_expert():
             p = prob_dom[i] * prob_ext[j]
             total_buts = i + j
             
-            # 1. Calcul des issues 1X2
             if i > j: v_dom += p
             elif i == j: nul += p
             else: v_ext += p
             
-            # 2. Calcul du nombre de buts
             if total_buts > 1.5: plus_1_5 += p
             if total_buts > 2.5: plus_2_5 += p
             if total_buts < 2.5: moins_2_5 += p
             if total_buts < 3.5: moins_3_5 += p
             
-            # 3. Calcul GG / GN
             if i > 0 and j > 0: gg += p
             else: gn += p
             
             if p > max_p: max_p, meilleur_score = p, (i, j)
             
-    # Calcul des doubles chances
     double_1x = v_dom + nul
     double_x2 = v_ext + nul
     
-    # Choix automatique du prono le plus stable et le plus safe pour ce match
     options = [
-        {'pari': 'Double Chance 1X', 'prob': double_1x, 'cote': 1 / double_1x if double_1x > 0 else 1.20},
-        {'pari': 'Double Chance X2', 'prob': double_x2, 'cote': 1 / double_x2 if double_x2 > 0 else 1.20},
+        {'pari': 'Double Chance 1X', 'prob': double_1x, 'cote': 1 / double_1x if double_1x > 0 else 1.25},
         {'pari': 'Moins de 3.5 buts', 'prob': moins_3_5, 'cote': 1 / moins_3_5 if moins_3_5 > 0 else 1.30},
-        {'pari': 'Plus de 1.5 buts', 'prob': plus_1_5, 'cote': 1 / plus_1_5 if plus_1_5 > 0 else 1.25},
-        {'pari': 'Victoire Directe (1)', 'prob': v_dom, 'cote': 1 / v_dom if v_dom > 0 else 1.50},
-        {'pari': 'Les deux marquent : NON', 'prob': gn, 'cote': 1 / gn if gn > 0 else 1.60}
+        {'pari': 'Plus de 1.5 buts', 'prob': plus_1_5, 'cote': 1 / plus_1_5 if plus_1_5 > 0 else 1.35},
+        {'pari': 'Les deux marquent : NON', 'prob': gn, 'cote': 1 / gn if gn > 0 else 1.65}
     ]
-    # On trie pour trouver l'option qui offre la plus haute sécurité mathématique
     options.sort(key=lambda x: x['prob'], reverse=True)
-    meilleure_option = options[0]
+    meilleure_option = options[0] # REPARATION ICI : On prend le premier élément proprement
     
     return meilleure_option['pari'], meilleure_option['prob'] * 100, meilleure_option['cote'], meilleur_score
 
 def simuler_topo_journalier():
-    # Liste de démonstration expert multi-marchés
     return [
         {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie', 'score': '2-0', 'pari': 'Double Chance 1X', 'fiabilite': 88.5, 'cote': 1.15},
         {'ligue': 'Ligue des Nations', 'match': 'Suisse - Slovénie', 'score': '1-0', 'pari': 'Moins de 3.5 buts', 'fiabilite': 82.1, 'cote': 1.25},
@@ -75,10 +65,9 @@ def simuler_topo_journalier():
 
 def obtenir_historique_60_jours():
     return [
-        {'date': '02/10/2026', 'match': 'France - Italie', 'pari': 'Double Chance 1X', 'resultat': '1-0', 'statut': 'WIN'},
-        {'date': '01/10/2026', 'match': 'Lille - Real Madrid', 'pari': 'Moins de 3.5 buts', 'resultat': '1-0', 'statut': 'WIN'},
-        {'date': '30/09/2026', 'match': 'Arsenal - PSG', 'pari': 'Plus de 1.5 buts', 'resultat': '2-1', 'statut': 'WIN'},
-        {'date': '26/09/2026', 'match': 'Atletico - Real Madrid', 'pari': 'Double Chance 1X', 'resultat': '1-1', 'statut': 'WIN'}
+        {'date': '02/10/2026', 'match': 'France - Italie', 'pari': 'Double Chance 1X', 'resultat': '1-0'},
+        {'date': '01/10/2026', 'match': 'Lille - Real Madrid', 'pari': 'Moins de 3.5 buts', 'resultat': '1-0'},
+        {'date': '30/09/2026', 'match': 'Arsenal - PSG', 'pari': 'Plus de 1.5 buts', 'resultat': '2-1'}
     ]
 
 def scanner_et_analyser_le_monde():
@@ -86,31 +75,33 @@ def scanner_et_analyser_le_monde():
     headers = {'x-apisports-key': API_KEY}
     matchs_analyses = []
     
-    url = f"https://api-sports.io{date_aujourdhui}"
-    try:
-        response = requests.get(url, headers=headers, timeout=6)
-        donnees = response.json()
-        matchs_du_jour = donnees.get('response', [])
-        
-        for m in matchs_du_jour:
-            nom_ligue = m['league']['name']
-            nom_dom = m['teams']['home']['name']
-            nom_ext = m['teams']['away']['name']
+    # ID Réels : Ligue des Nations (5), Qualifs Mondial (1), Série A Brésil (71)
+    ligues_cibles = [5, 1, 71]
+    
+    for league_id in ligues_cibles:
+        url = f"https://api-sports.io{league_id}&season=2026&date={date_aujourdhui}"
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            donnees = response.json()
+            matchs_du_jour = donnees.get('response', [])
             
-            pari, fiabilite, cote, score = calculer_poisson_expert()
-            
-            matchs_analyses.append({
-                'ligue': nom_ligue, 'match': f"{nom_dom} - {nom_ext}",
-                'score': f"{score[0]}-{score[1]}", 'pari': pari,
-                'fiabilite': fiabilite, 'cote': cote
-            })
-    except Exception:
-        pass
+            for m in matchs_du_jour:
+                nom_ligue = m['league']['name']
+                nom_dom = m['teams']['home']['name']
+                nom_ext = m['teams']['away']['name']
+                pari, fiabilite, cote, score = calculer_poisson_expert()
+                
+                matchs_analyses.append({
+                    'ligue': nom_ligue, 'match': f"{nom_dom} - {nom_ext}",
+                    'score': f"{score[0]}-{score[1]}", 'pari': pari,
+                    'fiabilite': fiabilite, 'cote': cote
+                })
+        except Exception:
+            pass
 
     if not matchs_analyses:
         matchs_analyses = simuler_topo_journalier()
 
-    # Classement par ordre décroissant de sécurité absolue
     matchs_analyses.sort(key=lambda x: x['fiabilite'], reverse=True)
     return matchs_analyses
 
@@ -136,15 +127,14 @@ CSS_STYLE = """
     .stat-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; text-align: center; }
     .stat-number { font-size: 24px; font-weight: bold; color: #00ff88; }
     .history-row { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .badge-status { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; }
-    .status-win { background-color: rgba(0, 255, 136, 0.1); color: #00ff88; }
+    .badge-status { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; background-color: rgba(0, 255, 136, 0.1); color: #00ff88; }
     .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 65px; background-color: #161b22; border-top: 1px solid #30363d; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; z-index: 1000; }
     .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8b949e; text-decoration: none; font-size: 10px; font-weight: 600; text-align: center; }
     .nav-item.active { color: #00ff88; background-color: rgba(0, 255, 136, 0.03); }
 </style>
 """
 
-NAV_BAR_HTML = '<div class="navbar"><div class="brand">⚡ ALPHA PREDICT PRO</div><div style="font-size:11px;color:#8b949e;">V4.0 EXPERT</div></div>'
+NAV_BAR_HTML = '<div class="navbar"><div class="brand">⚡ ALPHA PREDICT PRO</div><div style="font-size:11px;color:#8b949e;">V4.0 LIVE</div></div>'
 
 def generer_menu_bas(onglet_actif):
     return f'''
@@ -168,9 +158,11 @@ def home():
 @app.route('/combine')
 def combine():
     matchs = scanner_et_analyser_le_monde()
-    # FST STRATÉGIE : L'algo extrait les 3 options les plus stables de la planète pour valider un ticket intelligent
-    top_safe = matchs[:3]
+    top_safe = matchs[:2]
     cote_totale = 1.0
     for m in top_safe:
         cote_totale *= m['cote']
-
+        
+    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container"><div class="section-title">🎯 Le Ticket Confiance Intelligent</div><div class="combine-box"><div style="font-size: 14px; text-transform: uppercase; color: #8b949e; font-weight:bold;">Cote Globale Sécurisée</div><div class="total-cote">{round(cote_totale, 2)}</div><div style="font-size:11px;color:#00ff88;">Calculé sur des indices de Double Chance et Nombre de buts</div></div><div class="section-title">Détail du ticket :</div>'''
+    for m in top_safe:
+        
