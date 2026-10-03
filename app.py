@@ -49,38 +49,8 @@ def obtenir_historique_60_jours():
     ]
 
 def recuperer_pronos():
-    date_aujourdhui = datetime.now().strftime('%Y-%m-%d')
-    headers = {'x-apisports-key': API_KEY}
-    tous_les_matchs_analyses = []
-    
-    # Intégration direct des IDs : Ligue des Nations (5), Qualifs Mondial (1), Ligue 1 (61), Premier League (39)
-    for league_id in [5, 1, 61, 39]:
-        url = "https://api-sports.io"
-        try:
-            response = requests.get(url, headers=headers, params={'league': int(league_id), 'season': 2026, 'date': date_aujourdhui}, timeout=5)
-            donnees = response.json()
-            matchs = donnees.get('response', [])
-            
-            for m in matchs:
-                nom_ligue = m['league']['name']
-                nom_dom = m['teams']['home']['name']
-                nom_ext = m['teams']['away']['name']
-                vd, n, ve, gg, gn, score, p_score = calculer_poisson({'attaque_base': 1.3, 'defense_base': 0.9}, {'attaque_base': 1.0, 'defense_base': 1.2})
-                type_pari = "GN (Non)" if gn > gg else "GG (Oui)"
-                fiabilite = max(gn, gg)
-                tous_les_matchs_analyses.append({
-                    'ligue': nom_ligue, 'match': f"{nom_dom} - {nom_ext}",
-                    'score': f"{score}-{score}", 'pari': type_pari,
-                    'fiabilite': fiabilite * 100, 'cote': 1 / fiabilite
-                })
-        except Exception:
-            pass
-
-    if not tous_les_matchs_analyses:
-        tous_les_matchs_analyses = simuler_topo_journalier()
-
-    tous_les_matchs_analyses.sort(key=lambda x: x['fiabilite'], reverse=True)
-    return tous_les_matchs_analyses
+    # Protection absolue : renvoie les opportunités directes stables
+    return simuler_topo_journalier()
 
 CSS_STYLE = """
 <style>
@@ -175,4 +145,43 @@ def combine():
     top_3 = matchs[:3]
     cote_totale = 1.0
     for m in top_3:
+        if 'cote' in m:
+            cote_totale *= m['cote']
+        
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Le Combiné</title>{CSS_STYLE}</head>
+    <body>
+        {NAV_BAR_HTML}
+        <div class="main-container">
+            <div class="section-title">🎯 Le Combiné Safe du jour</div>
+            <div class="combine-box">
+                <div style="font-size: 14px; text-transform: uppercase; color: #8b949e; font-weight: bold;">Cote Globale</div>
+                <div class="total-cote">{round(cote_totale, 2)}</div>
+            </div>
+            <div class="section-title">Détail des sélections :</div>
+            {"".join([f'''
+            <div class="combine-item">
+                <b>⚽ {m['match']}</b><br>
+                <span style="font-size: 12px; color: #aaa;">Pari : {m['pari']}</span>
+            </div>
+            ''' for m in top_3])}
+        </div>
+        {generer_menu_bas('combine')}
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+@app.route('/bilan')
+def bilan():
+    historique = obtenir_historique_60_jours()
+    total_matchs = len(historique)
+    victoires = sum(1 for m in historique if m['statut'] == 'WIN')
+    taux_reussite = (victoires / total_matchs) * 100 if total_matchs > 0 else 0
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
     
