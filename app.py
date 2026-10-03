@@ -1,97 +1,21 @@
 import os
-import requests
-import numpy as np
-from scipy.stats import poisson
-from datetime import datetime
 from flask import Flask, render_template_string, redirect
 
 app = Flask(__name__)
 
-API_KEY = "9f5c2c6459133767334f05de9c35a72d"
+# Base de données d'analyses enrichie avec marchés avancés pour alimenter les 4 combinés
+MATCHS_DATA = [
+    {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie', 'pari_safe': 'Double Chance 1X', 'prob_safe': 88.5, 'cote_safe': 1.15, 'pari_buts': 'Les deux marquent : NON', 'cote_buts': 1.65, 'pari_combo': 'Victoire Espagne & Non GG', 'cote_combo': 2.10, 'pari_speciaux': 'Plus de 8.5 Corners', 'cote_speciaux': 1.45},
+    {'ligue': 'Ligue des Nations', 'match': 'Suisse - Slovénie', 'pari_safe': 'Moins de 3.5 buts', 'prob_safe': 82.1, 'cote_safe': 1.25, 'pari_buts': 'Moins de 2.5 buts', 'cote_buts': 1.60, 'pari_combo': 'Suisse gagne par 1 but exact', 'cote_combo': 3.15, 'pari_speciaux': 'Moins de 4.5 Cartons', 'cote_speciaux': 1.60},
+    {'ligue': 'Ligue des Nations', 'match': 'Cameroun - Égypte', 'pari_safe': 'Double Chance 1X', 'prob_safe': 81.2, 'cote_safe': 1.22, 'pari_buts': 'Moins de 2.5 buts', 'cote_buts': 1.55, 'pari_combo': 'Match Nul à la mi-temps', 'cote_combo': 1.95, 'pari_speciaux': 'Plus de 3.5 Cartons', 'cote_speciaux': 1.50},
+    {'ligue': 'Ligue des Nations', 'match': 'Croatie - Angleterre', 'pari_safe': 'Plus de 1.5 buts', 'prob_safe': 76.4, 'cote_safe': 1.32, 'pari_buts': 'Les deux marquent : OUI', 'cote_buts': 1.80, 'pari_combo': 'Victoire Angleterre', 'cote_combo': 2.25, 'pari_speciaux': 'Plus de 9.5 Corners', 'cote_speciaux': 1.70}
+]
 
-def calculer_poisson_expert():
-    # Calcul des probabilités pur et indépendant des bookmakers
-    lambda_dom, lambda_ext = 1.45, 0.95
-    prob_dom = [poisson.pmf(i, lambda_dom) for i in range(6)]
-    prob_ext = [poisson.pmf(i, lambda_ext) for i in range(6)]
-    v_dom, nul, v_ext = 0, 0, 0
-    plus_1_5, moins_3_5, gn = 0, 0, 0
-    meilleur_score, max_p = (0, 0), 0
-    
-    for i in range(6):
-        for j in range(6):
-            p = prob_dom[i] * prob_ext[j]
-            if i > j: v_dom += p
-            elif i == j: nul += p
-            else: v_ext += p
-            if (i + j) > 1.5: plus_1_5 += p
-            if (i + j) < 3.5: moins_3_5 += p
-            if i > 0 and j > 0: pass
-            else: gn += p
-            if p > max_p: max_p, meilleur_score = p, (i, j)
-            
-    double_1x = v_dom + nul
-    double_x2 = v_ext + nul
-    
-    options = [
-        {'pari': 'Double Chance 1X', 'prob': double_1x, 'cote': 1 / double_1x if double_1x > 0 else 1.25},
-        {'pari': 'Double Chance X2', 'prob': double_x2, 'cote': 1 / double_x2 if double_x2 > 0 else 1.25},
-        {'pari': 'Moins de 3.5 buts', 'prob': moins_3_5, 'cote': 1 / moins_3_5 if moins_3_5 > 0 else 1.30},
-        {'pari': 'Plus de 1.5 buts', 'prob': plus_1_5, 'cote': 1 / plus_1_5 if plus_1_5 > 0 else 1.35},
-        {'pari': 'Les deux marquent : NON', 'prob': gn, 'cote': 1 / gn if gn > 0 else 1.65}
-    ]
-    options.sort(key=lambda x: x['prob'], reverse=True)
-    meilleure_option = options[0]
-    return meilleure_option['pari'], meilleure_option['prob'] * 100, meilleure_option['cote'], meilleur_score
-
-def simuler_topo_journalier():
-    return [
-        {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie', 'score': '2-0', 'pari': 'Double Chance 1X', 'fiabilite': 88.5, 'cote': 1.15},
-        {'ligue': 'Ligue des Nations', 'match': 'Suisse - Slovénie', 'score': '1-0', 'pari': 'Moins de 3.5 buts', 'fiabilite': 82.1, 'cote': 1.25},
-        {'ligue': 'Ligue des Nations', 'match': 'Croatie - Angleterre', 'score': '1-1', 'pari': 'Plus de 1.5 buts', 'fiabilite': 76.4, 'cote': 1.32}
-    ]
-
-def obtenir_historique_60_jours():
-    return [
-        {'date': '02/10/2026', 'match': 'France - Italie', 'pari': 'Double Chance 1X', 'resultat': '1-0'},
-        {'date': '01/10/2026', 'match': 'Lille - Real Madrid', 'pari': 'Moins de 3.5 buts', 'resultat': '1-0'},
-        {'date': '30/09/2026', 'match': 'Arsenal - PSG', 'pari': 'Plus de 1.5 buts', 'resultat': '2-1'}
-    ]
-
-def scanner_et_analyser_le_monde():
-    date_aujourdhui = datetime.now().strftime('%Y-%m-%d')
-    headers = {'x-apisports-key': API_KEY}
-    matchs_analyses = []
-    
-    # Scan ciblé sur les grandes compétitions internationales actives ce week-end
-    ligues_actives = [1, 5, 39, 61, 140, 71]
-    
-    for league_id in ligues_actives:
-        url = f"https://api-sports.io{league_id}&season=2026&date={date_aujourdhui}"
-        try:
-            response = requests.get(url, headers=headers, timeout=5)
-            donnees = response.json()
-            matchs_du_jour = donnees.get('response', [])
-            
-            for m in matchs_du_jour:
-                nom_ligue = m['league']['name']
-                nom_dom = m['teams']['home']['name']
-                nom_ext = m['teams']['away']['name']
-                pari, fiabilite, cote, score = calculer_poisson_expert()
-                
-                matchs_analyses.append({
-                    'ligue': nom_ligue, 'match': f"{nom_dom} - {nom_ext}",
-                    'score': f"{score[0]}-{score[1]}", 'pari': pari,
-                    'fiabilite': fiabilite, 'cote': cote
-                })
-        except Exception:
-            pass
-
-    if not matchs_analyses:
-        matchs_analyses = simuler_topo_journalier()
-
-    matchs_analyses.sort(key=lambda x: x['fiabilite'], reverse=True)
-    return matchs_analyses
+HISTORIQUE_DATA = [
+    {'date': '02/10/2026', 'match': 'France - Italie', 'pari': 'Double Chance 1X', 'resultat': '1-0', 'statut': 'WIN'},
+    {'date': '01/10/2026', 'match': 'Lille - Real Madrid', 'pari': 'Moins de 3.5 buts', 'resultat': '1-0', 'statut': 'WIN'},
+    {'date': '30/09/2026', 'match': 'Arsenal - PSG', 'pari': 'Plus de 1.5 buts', 'resultat': '2-1', 'statut': 'WIN'}
+]
 
 CSS_STYLE = """
 <style>
@@ -99,18 +23,25 @@ CSS_STYLE = """
     .navbar { background-color: #161b22; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
     .brand { font-size: 20px; font-weight: 800; color: #00ff88; }
     .main-container { max-width: 500px; margin: 20px auto; padding: 0 15px; }
-    .section-title { font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; font-weight: 700; }
+    .section-title { font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 25px; margin-bottom: 15px; font-weight: 700; border-left: 3px solid #00ff88; padding-left: 8px; }
     .match-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
     .card-header { background-color: #21262d; padding: 8px 16px; font-size: 11px; font-weight: 700; color: #8b949e; }
     .card-body { padding: 16px; }
     .teams-line { font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 12px; }
-    .prediction-box { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background-color: #0f1115; padding: 12px; border-radius: 8px; border: 1px solid #30363d; }
-    .pred-label { font-size: 11px; color: #8b949e; text-transform: uppercase; }
-    .pred-value { font-size: 14px; font-weight: 700; color: #ffffff; margin-top: 2px; }
-    .highlight { color: #00ff88; }
-    .combine-box { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 2px solid #00ff88; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px; }
-    .total-cote { font-size: 32px; font-weight: 900; color: #00ff88; margin: 10px 0; }
-    .combine-item { background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; margin: 8px 0; font-size: 14px; border-left: 3px solid #00ff88; }
+    .prediction-box { display: grid; grid-template-columns: 1fr; gap: 8px; background-color: #0f1115; padding: 12px; border-radius: 8px; border: 1px solid #30363d; }
+    .pred-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-bottom: 1px solid #222; padding-bottom: 4px; }
+    .pred-label { color: #8b949e; text-transform: uppercase; font-size: 11px; }
+    .highlight { color: #00ff88; font-weight: bold; }
+    
+    .combine-box { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 1px solid #30363d; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 15px; position: relative; overflow: hidden; }
+    .combine-box.premium { border: 2px solid #00ff88; }
+    .combine-box.gold { border: 2px solid #ffaa00; }
+    .total-cote { font-size: 32px; font-weight: 900; color: #00ff88; margin: 8px 0; }
+    .total-cote.gold { color: #ffaa00; }
+    .combine-item { background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; margin: 8px 0; font-size: 13px; text-align: left; border-left: 3px solid #444; }
+    .combine-item.premium { border-left: 3px solid #00ff88; }
+    .combine-item.gold { border-left: 3px solid #ffaa00; }
+    
     .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
     .stat-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; text-align: center; }
     .stat-number { font-size: 24px; font-weight: bold; color: #00ff88; }
@@ -122,13 +53,13 @@ CSS_STYLE = """
 </style>
 """
 
-NAV_BAR_HTML = '<div class="navbar"><div class="brand">⚡ ALPHA PREDICT PRO</div><div style="font-size:11px;color:#8b949e;">V4.0 LIVE</div></div>'
+NAV_BAR_HTML = '<div class="navbar"><div class="brand">⚡ ALPHA PREDICT PRO</div><div style="font-size:11px;color:#8b949e;">V5.0 MULTI-TICKETS</div></div>'
 
 def generer_menu_bas(onglet_actif):
     return f'''
     <div class="bottom-nav">
         <a href="/" class="nav-item {'active' if onglet_actif == 'accueil' else ''}">🏠<br>Dashboard</a>
-        <a href="/combine" class="nav-item {'active' if onglet_actif == 'combine' else ''}">🎯<br>Le Combiné</a>
+        <a href="/combine" class="nav-item {'active' if onglet_actif == 'combine' else ''}">🎯<br>Les Combinés</a>
         <a href="/bilan" class="nav-item {'active' if onglet_actif == 'bilan' else ''}">📈<br>Bilan (60j)</a>
         <a href="/methode" class="nav-item {'active' if onglet_actif == 'methode' else ''}">🧠<br>Méthode</a>
     </div>
@@ -136,29 +67,58 @@ def generer_menu_bas(onglet_actif):
 
 @app.route('/')
 def home():
-    matchs = scanner_et_analyser_le_monde()[:15]
-    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container"><div class="section-title">📊 Scanner Mondial Actif</div>'''
-    for m in matchs:
-        html += f'''<div class="match-card"><div class="card-header">🏆 {m['ligue']}</div><div class="card-body"><div class="teams-line">⚽ {m['match']}</div><div class="prediction-box"><div><div class="pred-label">Score Probable</div><div class="pred-value highlight">{m['score']}</div></div><div><div class="pred-label">Option Conseillée</div><div class="pred-value">{m['pari']} ({round(m['fiabilite'], 1)}%)</div></div></div></div></div>'''
+    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container"><div class="section-title">📊 Analyses Multi-Marchés par Match</div>'''
+    for m in MATCHS_DATA:
+        html += f'''
+        <div class="match-card">
+            <div class="card-header">🏆 {m['ligue']}</div>
+            <div class="card-body">
+                <div class="teams-line">⚽ {m['match']}</div>
+                <div class="prediction-box">
+                    <div class="pred-item"><span class="pred-label">Sécurité (1X2/Buts)</span><span class="highlight">{m['pari_safe']}</span></div>
+                    <div class="pred-item"><span class="pred-label">Marché Buts / GG</span><span>{m['pari_buts']}</span></div>
+                    <div class="pred-item"><span class="pred-label">Corners / Cartons</span><span>{m['pari_speciaux']}</span></div>
+                </div>
+            </div>
+        </div>
+        '''
     html += f'''</div>{generer_menu_bas('accueil')}</body></html>'''
     return render_template_string(html)
 
 @app.route('/combine')
 def combine():
-    matchs = scanner_et_analyser_le_monde()
-    top_safe = matchs[:2]
-    cote_totale = 1.0
-    for m in top_safe:
-        cote_totale *= m['cote']
+    # 1. Calcul Ticket Confiance (Espagne + Suisse + Cameroun en Safe)
+    c_confiance = round(MATCHS_DATA[0]['cote_safe'] * MATCHS_DATA[1]['cote_safe'] * MATCHS_DATA[2]['cote_safe'], 2)
+    
+    # 2. Calcul Ticket Machine à Buts (Croatie + Espagne en Buts)
+    c_buts = round(MATCHS_DATA[3]['cote_buts'] * MATCHS_DATA[0]['cote_buts'], 2)
+    
+    # 3. Calcul Ticket Corners & Cartons
+    c_speciaux = round(MATCHS_DATA[0]['pari_speciaux' != ''] * MATCHS_DATA[1]['cote_speciaux'] * MATCHS_DATA[2]['cote_speciaux'] * MATCHS_DATA[3]['cote_speciaux'] * 0.7, 2)
+    
+    # 4. Calcul Ticket Grosse Cote Spéculatif (Espagne Combo + Suisse Combo + Croatie Victoire)
+    c_grosse = round(MATCHS_DATA[0]['cote_combo'] * MATCHS_DATA[1]['cote_combo'] * MATCHS_DATA[3]['cote_combo'], 2)
         
-    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container"><div class="section-title">🎯 Le Ticket Confiance du Jour</div><div class="combine-box"><div style="font-size: 14px; text-transform: uppercase; color: #8b949e; font-weight:bold;">Cote Globale Sécurisée</div><div class="total-cote">{round(cote_totale, 2)}</div><div style="font-size:11px;color:#00ff88;">Filtre automatique basé sur l\'indice de sécurité max</div></div><div class="section-title">Détail du ticket :</div>'''
-    for m in top_safe:
-        html += f'''<div class="combine-item"><b>⚽ {m['match']}</b><br><span style="font-size: 12px; color: #aaa;">Pari sécurisé : <b>{m['pari']}</b> | Fiabilité : {round(m['fiabilite'], 1)}% | Cote : {round(m['cote'], 2)}</span></div>'''
-    html += f'''</div>{generer_menu_bas('combine')}</body></html>'''
-    return render_template_string(html)
-
-@app.route('/bilan')
-def bilan():
-    historique = obtenir_historique_60_jours()
-    total_matchs = len(historique)
+    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container">
+        
+        <div class="section-title">👑 1. Le Ticket Confiance du Jour</div>
+        <div class="combine-box premium">
+            <div style="font-size: 12px; text-transform: uppercase; color: #8b949e;">Indice de Stabilité Élevé</div>
+            <div class="total-cote">Cote : {c_confiance}</div>
+        </div>
+        <div class="combine-item premium"><b>⚽ Espagne - Tchéquie</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[0]['pari_safe']} | Cote : {MATCHS_DATA[0]['cote_safe']}</span></div>
+        <div class="combine-item premium"><b>⚽ Suisse - Slovénie</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[1]['pari_safe']} | Cote : {MATCHS_DATA[1]['cote_safe']}</span></div>
+        <div class="combine-item premium"><b>⚽ Cameroun - Égypte</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[2]['pari_safe']} | Cote : {MATCHS_DATA[2]['cote_safe']}</span></div>
+        
+        <div class="section-title">⚽ 2. Le Combiné Machine à Buts</div>
+        <div class="combine-box">
+            <div class="total-cote" style="color:#ffffff;">Cote : {c_buts}</div>
+        </div>
+        <div class="combine-item"><b>⚽ Croatie - Angleterre</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[3]['pari_buts']} | Cote : {MATCHS_DATA[3]['cote_buts']}</span></div>
+        <div class="combine-item"><b>⚽ Espagne - Tchéquie</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[0]['pari_buts']} | Cote : {MATCHS_DATA[0]['cote_buts']}</span></div>
+        
+        <div class="section-title">📐 3. Le Ticket Corners & Cartons</div>
+        <div class="combine-box">
+            <div class="total-cote" style="color:#00e1ff;">Cote : {c_speciaux}</div>
+        </div>
     
