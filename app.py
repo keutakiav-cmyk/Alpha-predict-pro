@@ -7,8 +7,12 @@ from flask import Flask, render_template_string, redirect
 
 app = Flask(__name__)
 
+# =====================================================================
+# CONFIGURATION DÉFINITIVE
+# =====================================================================
 API_KEY = "9f5c2c6459133767334f05de9c35a72d"
 COMPETITIONS = [5, 1, 61, 39, 140]
+# =====================================================================
 
 def calculer_poisson(eq_dom, eq_ext):
     lambda_dom = eq_dom['attaque_base'] * eq_ext['defense_base'] * 1.45
@@ -168,15 +172,3 @@ def home():
     """
     return render_template_string(html)
 
-@app.route('/combine')
-def combine():
-    matchs = recuperer_pronos()
-    top_3 = matchs[:3]
-    cote_totale = 1.0
-    for m in top_3:
-        cote_totale *= m['cote']
-        
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-                                                                                
