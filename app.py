@@ -8,10 +8,9 @@ from flask import Flask, render_template_string, redirect
 app = Flask(__name__)
 
 # =====================================================================
-# CONFIGURATION DÉFINITIVE
+# CONFIGURATION
 # =====================================================================
 API_KEY = "9f5c2c6459133767334f05de9c35a72d"
-COMPETITIONS = [5, 1, 61, 39, 140]
 # =====================================================================
 
 def calculer_poisson(eq_dom, eq_ext):
@@ -56,8 +55,11 @@ def recuperer_pronos():
     date_aujourdhui = datetime.now().strftime('%Y-%m-%d')
     headers = {'x-apisports-key': API_KEY}
     tous_les_matchs_analyses = []
+    
+    # ID : Ligue des Nations (5), Qualifs Coupe du Monde (1), Ligue 1 (61), Premier League (39)
+    competitions_ids = 
 
-    for league_id in COMPETITIONS:
+    for league_id in competitions_ids:
         url = "https://api-sports.io"
         try:
             response = requests.get(url, headers=headers, params={'league': int(league_id), 'season': 2026, 'date': date_aujourdhui}, timeout=5)
@@ -167,8 +169,4 @@ def home():
             ''' for m in matchs])}
         </div>
         {generer_menu_bas('accueil')}
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
+    
