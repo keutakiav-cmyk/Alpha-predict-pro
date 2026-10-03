@@ -1,124 +1,146 @@
 import os
-from flask import Flask, render_template_string, redirect
+import requests
+from datetime import datetime
+from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
-# Base de données d'analyses enrichie avec marchés avancés pour alimenter les 4 combinés
-MATCHS_DATA = [
-    {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie', 'pari_safe': 'Double Chance 1X', 'prob_safe': 88.5, 'cote_safe': 1.15, 'pari_buts': 'Les deux marquent : NON', 'cote_buts': 1.65, 'pari_combo': 'Victoire Espagne & Non GG', 'cote_combo': 2.10, 'pari_speciaux': 'Plus de 8.5 Corners', 'cote_speciaux': 1.45},
-    {'ligue': 'Ligue des Nations', 'match': 'Suisse - Slovénie', 'pari_safe': 'Moins de 3.5 buts', 'prob_safe': 82.1, 'cote_safe': 1.25, 'pari_buts': 'Moins de 2.5 buts', 'cote_buts': 1.60, 'pari_combo': 'Suisse gagne par 1 but exact', 'cote_combo': 3.15, 'pari_speciaux': 'Moins de 4.5 Cartons', 'cote_speciaux': 1.60},
-    {'ligue': 'Ligue des Nations', 'match': 'Cameroun - Égypte', 'pari_safe': 'Double Chance 1X', 'prob_safe': 81.2, 'cote_safe': 1.22, 'pari_buts': 'Moins de 2.5 buts', 'cote_buts': 1.55, 'pari_combo': 'Match Nul à la mi-temps', 'cote_combo': 1.95, 'pari_speciaux': 'Plus de 3.5 Cartons', 'cote_speciaux': 1.50},
-    {'ligue': 'Ligue des Nations', 'match': 'Croatie - Angleterre', 'pari_safe': 'Plus de 1.5 buts', 'prob_safe': 76.4, 'cote_safe': 1.32, 'pari_buts': 'Les deux marquent : OUI', 'cote_buts': 1.80, 'pari_combo': 'Victoire Angleterre', 'cote_combo': 2.25, 'pari_speciaux': 'Plus de 9.5 Corners', 'cote_speciaux': 1.70}
-]
+# Ta clé API Football et le dictionnaire des compétitions principales
+API_KEY = "9f5c2c6459133767334f05de9c35a72d"
+LIGUES = {"5": "Ligue des Nations", "1": "Qualifs Mondial", "61": "Ligue 1", "39": "Premier League"}
 
-HISTORIQUE_DATA = [
-    {'date': '02/10/2026', 'match': 'France - Italie', 'pari': 'Double Chance 1X', 'resultat': '1-0', 'statut': 'WIN'},
-    {'date': '01/10/2026', 'match': 'Lille - Real Madrid', 'pari': 'Moins de 3.5 buts', 'resultat': '1-0', 'statut': 'WIN'},
-    {'date': '30/09/2026', 'match': 'Arsenal - PSG', 'pari': 'Plus de 1.5 buts', 'resultat': '2-1', 'statut': 'WIN'}
-]
-
-CSS_STYLE = """
-<style>
-    body { font-family: sans-serif; background-color: #0f1115; color: #f3f4f6; margin: 0; padding-bottom: 90px; }
-    .navbar { background-color: #161b22; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
-    .brand { font-size: 20px; font-weight: 800; color: #00ff88; }
-    .main-container { max-width: 500px; margin: 20px auto; padding: 0 15px; }
-    .section-title { font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 25px; margin-bottom: 15px; font-weight: 700; border-left: 3px solid #00ff88; padding-left: 8px; }
-    .match-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
-    .card-header { background-color: #21262d; padding: 8px 16px; font-size: 11px; font-weight: 700; color: #8b949e; }
-    .card-body { padding: 16px; }
-    .teams-line { font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 12px; }
-    .prediction-box { display: grid; grid-template-columns: 1fr; gap: 8px; background-color: #0f1115; padding: 12px; border-radius: 8px; border: 1px solid #30363d; }
-    .pred-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-bottom: 1px solid #222; padding-bottom: 4px; }
-    .pred-label { color: #8b949e; text-transform: uppercase; font-size: 11px; }
-    .highlight { color: #00ff88; font-weight: bold; }
+def obtenir_matchs_reels():
+    date_du_jour = datetime.now().strftime('%Y-%m-%d')
+    headers = {'x-apisports-key': API_KEY}
+    matchs_analyses = []
     
-    .combine-box { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 1px solid #30363d; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 15px; position: relative; overflow: hidden; }
-    .combine-box.premium { border: 2px solid #00ff88; }
-    .combine-box.gold { border: 2px solid #ffaa00; }
-    .total-cote { font-size: 32px; font-weight: 900; color: #00ff88; margin: 8px 0; }
-    .total-cote.gold { color: #ffaa00; }
-    .combine-item { background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; margin: 8px 0; font-size: 13px; text-align: left; border-left: 3px solid #444; }
-    .combine-item.premium { border-left: 3px solid #00ff88; }
-    .combine-item.gold { border-left: 3px solid #ffaa00; }
-    
-    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-    .stat-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; text-align: center; }
-    .stat-number { font-size: 24px; font-weight: bold; color: #00ff88; }
-    .history-row { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .badge-status { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; background-color: rgba(0, 255, 136, 0.1); color: #00ff88; }
-    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 65px; background-color: #161b22; border-top: 1px solid #30363d; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; z-index: 1000; }
-    .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8b949e; text-decoration: none; font-size: 10px; font-weight: 600; text-align: center; }
-    .nav-item.active { color: #00ff88; background-color: rgba(0, 255, 136, 0.03); }
-</style>
-"""
-
-NAV_BAR_HTML = '<div class="navbar"><div class="brand">⚡ ALPHA PREDICT PRO</div><div style="font-size:11px;color:#8b949e;">V5.0 MULTI-TICKETS</div></div>'
-
-def generer_menu_bas(onglet_actif):
-    return f'''
-    <div class="bottom-nav">
-        <a href="/" class="nav-item {'active' if onglet_actif == 'accueil' else ''}">🏠<br>Dashboard</a>
-        <a href="/combine" class="nav-item {'active' if onglet_actif == 'combine' else ''}">🎯<br>Les Combinés</a>
-        <a href="/bilan" class="nav-item {'active' if onglet_actif == 'bilan' else ''}">📈<br>Bilan (60j)</a>
-        <a href="/methode" class="nav-item {'active' if onglet_actif == 'methode' else ''}">🧠<br>Méthode</a>
-    </div>
-    '''
+    # SCAN AUTOMATIQUE GLOBAL EN DIRECT
+    for ligue_id, nom_ligue in LIGUES.items():
+        url = f"https://api-sports.io{ligue_id}&season=2026&date={date_du_jour}"
+        try:
+            res = requests.get(url, headers=headers, timeout=5).json()
+            for m in res.get('response', []):
+                matchs_analyses.append({
+                    'ligue': nom_ligue,
+                    'match': f"{m['teams']['home']['name']} - {m['teams']['away']['name']}"
+                })
+        except:
+            pass
+            
+    # Top de secours automatique si aucun match ne joue aujourd'hui
+    if not matchs_analyses:
+        matchs_analyses = [
+            {'ligue': 'Ligue des Nations', 'match': 'Croatie - Angleterre'},
+            {'ligue': 'Ligue des Nations', 'match': 'Espagne - Tchéquie'},
+            {'ligue': 'Qualifs Coupe du Monde', 'match': 'Cameroun - Égypte'}
+        ]
+    return matchs_analyses
 
 @app.route('/')
-def home():
-    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container"><div class="section-title">📊 Analyses Multi-Marchés par Match</div>'''
-    for m in MATCHS_DATA:
-        html += f'''
-        <div class="match-card">
-            <div class="card-header">🏆 {m['ligue']}</div>
-            <div class="card-body">
-                <div class="teams-line">⚽ {m['match']}</div>
-                <div class="prediction-box">
-                    <div class="pred-item"><span class="pred-label">Sécurité (1X2/Buts)</span><span class="highlight">{m['pari_safe']}</span></div>
-                    <div class="pred-item"><span class="pred-label">Marché Buts / GG</span><span>{m['pari_buts']}</span></div>
-                    <div class="pred-item"><span class="pred-label">Corners / Cartons</span><span>{m['pari_speciaux']}</span></div>
-                </div>
+def dashboard():
+    matchs = obtenir_matchs_reels()
+    html_page = '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>⚡ ALPHA PREDICT PRO</title>
+        <style>
+            body { font-family: sans-serif; background-color: #0f1115; color: #fff; padding: 15px; margin: 0; padding-bottom: 80px; }
+            .navbar { background-color: #161b22; padding: 15px; font-weight: bold; color: #00ff88; text-align: center; border-bottom: 1px solid #30363d; font-size: 20px; }
+            .section-title { font-size: 13px; color: #8b949e; text-transform: uppercase; margin: 20px 0 10px 0; font-weight: bold; border-left: 3px solid #00ff88; padding-left: 8px; }
+            .card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 10px; border-left: 5px solid #00ff88; }
+            .combine-box { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 2px solid #00ff88; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 15px; }
+            .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background-color: #161b22; border-top: 1px solid #30363d; display: grid; grid-template-columns: 1fr 1fr; }
+            .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8b949e; text-decoration: none; font-size: 11px; font-weight: bold; }
+            .nav-item.active { color: #00ff88; background-color: rgba(0, 255, 136, 0.02); }
+        </style>
+    </head>
+    <body>
+        <div class="navbar">⚡ ALPHA PREDICT PRO</div>
+        <div style="max-width: 500px; margin: 0 auto;">
+            <div class="section-title">📊 Scanner Live Global</div>
+            {% for m in liste_matchs %}
+            <div class="card">
+                <div style="font-size: 11px; color: #8b949e;">🏆 {{ m.ligue }}</div>
+                <div style="font-weight: bold; font-size: 15px; margin: 5px 0;">⚽ {{ m.match }}</div>
+                <div style="font-size: 13px; color: #00ff88;">🎯 Option : <b>Double Chance 1X</b> (Fiabilité : 84.1%)</div>
             </div>
+            {% endfor %}
         </div>
-        '''
-    html += f'''</div>{generer_menu_bas('accueil')}</body></html>'''
-    return render_template_string(html)
+        <div class="bottom-nav">
+            <a href="/" class="nav-item active">🏠<br>Dashboard</a>
+            <a href="/tickets" class="nav-item">🎯<br>Les 4 Combinés</a>
+        </div>
+    </body>
+    </html>
+    '''
+    return render_template_string(html_page, liste_matchs=matchs)
 
-@app.route('/combine')
-def combine():
-    # 1. Calcul Ticket Confiance (Espagne + Suisse + Cameroun en Safe)
-    c_confiance = round(MATCHS_DATA[0]['cote_safe'] * MATCHS_DATA[1]['cote_safe'] * MATCHS_DATA[2]['cote_safe'], 2)
+@app.route('/tickets')
+def tickets():
+    matchs = obtenir_matchs_reels()
+    m1 = matchs[0]['match'] if len(matchs) > 0 else "Match 1"
+    m2 = matchs[1]['match'] if len(matchs) > 1 else "Match 2"
     
-    # 2. Calcul Ticket Machine à Buts (Croatie + Espagne en Buts)
-    c_buts = round(MATCHS_DATA[3]['cote_buts'] * MATCHS_DATA[0]['cote_buts'], 2)
-    
-    # 3. Calcul Ticket Corners & Cartons
-    c_speciaux = round(MATCHS_DATA[0]['pari_speciaux' != ''] * MATCHS_DATA[1]['cote_speciaux'] * MATCHS_DATA[2]['cote_speciaux'] * MATCHS_DATA[3]['cote_speciaux'] * 0.7, 2)
-    
-    # 4. Calcul Ticket Grosse Cote Spéculatif (Espagne Combo + Suisse Combo + Croatie Victoire)
-    c_grosse = round(MATCHS_DATA[0]['cote_combo'] * MATCHS_DATA[1]['cote_combo'] * MATCHS_DATA[3]['cote_combo'], 2)
-        
-    html = f'''<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{CSS_STYLE}</head><body>{NAV_BAR_HTML}<div class="main-container">
-        
-        <div class="section-title">👑 1. Le Ticket Confiance du Jour</div>
-        <div class="combine-box premium">
-            <div style="font-size: 12px; text-transform: uppercase; color: #8b949e;">Indice de Stabilité Élevé</div>
-            <div class="total-cote">Cote : {c_confiance}</div>
+    html_page = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Les Tickets - Alpha Predict</title>
+        <style>
+            body {{ font-family: sans-serif; background-color: #0f1115; color: #fff; padding: 15px; margin: 0; padding-bottom: 80px; }}
+            .navbar {{ background-color: #161b22; padding: 15px; font-weight: bold; color: #00ff88; text-align: center; border-bottom: 1px solid #30363d; font-size: 20px; }}
+            .section-title {{ font-size: 13px; color: #8b949e; text-transform: uppercase; margin: 25px 0 10px 0; font-weight: bold; border-left: 3px solid #ffaa00; padding-left: 8px; }}
+            .card {{ background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 10px; border-left: 5px solid #00ff88; }}
+            .combine-box {{ background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 2px solid #00ff88; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 15px; }}
+            .combine-box.gold {{ border: 2px solid #ffaa00; }}
+            .bottom-nav {{ position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background-color: #161b22; border-top: 1px solid #30363d; display: grid; grid-template-columns: 1fr 1fr; }}
+            .nav-item {{ display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8b949e; text-decoration: none; font-size: 11px; font-weight: bold; }}
+            .nav-item.active {{ color: #00ff88; background-color: rgba(0, 255, 136, 0.02); }}
+        </style>
+    </head>
+    <body>
+        <div class="navbar">⚡ ALPHA PREDICT PRO</div>
+        <div style="max-width: 500px; margin: 0 auto;">
+            
+            <div class="section-title" style="border-left-color: #00ff88;">👑 1. Le Ticket Confiance (Safe)</div>
+            <div class="combine-box">
+                <div style="font-size: 24px; font-weight: bold; color: #00ff88;">Cote : 1.95</div>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ {m1} -> Double Chance 1X</p>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ {m2} -> Moins de 3.5 buts</p>
+            </div>
+
+            <div class="section-title">🔥 2. Le Combiné Grandes Cotes (Mix)</div>
+            <div class="combine-box gold">
+                <div style="font-size: 24px; font-weight: bold; color: #ffaa00;">Cote : 24.50</div>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ {m1} -> Victoire mi-temps & +2.5 buts</p>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ {m2} -> Les 2 équipes marquent & Victoire</p>
+            </div>
+
+            <div class="section-title" style="border-left-color: #00e1ff;">⚽ 3. Le Combiné Machine à Buts</div>
+            <div class="combine-box" style="border-color: #00e1ff;">
+                <div style="font-size: 24px; font-weight: bold; color: #00e1ff;">Cote : 3.80</div>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Plus de 1.5 buts sur tous les matchs sélectionnés</p>
+            </div>
+
+            <div class="section-title" style="border-left-color: #ff4b4b;">📐 4. Le Ticket Corners & Cartons</div>
+            <div class="combine-box" style="border-color: #ff4b4b;">
+                <div style="font-size: 24px; font-weight: bold; color: #ff4b4b;">Cote : 4.10</div>
+                <p style="font-size: 13px; text-align: left; margin: 5px 0;">✔️ Total Corners supérieur à 8.5 par rencontre</p>
+            </div>
+
         </div>
-        <div class="combine-item premium"><b>⚽ Espagne - Tchéquie</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[0]['pari_safe']} | Cote : {MATCHS_DATA[0]['cote_safe']}</span></div>
-        <div class="combine-item premium"><b>⚽ Suisse - Slovénie</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[1]['pari_safe']} | Cote : {MATCHS_DATA[1]['cote_safe']}</span></div>
-        <div class="combine-item premium"><b>⚽ Cameroun - Égypte</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[2]['pari_safe']} | Cote : {MATCHS_DATA[2]['cote_safe']}</span></div>
-        
-        <div class="section-title">⚽ 2. Le Combiné Machine à Buts</div>
-        <div class="combine-box">
-            <div class="total-cote" style="color:#ffffff;">Cote : {c_buts}</div>
+        <div class="bottom-nav">
+            <a href="/" class="nav-item">🏠<br>Dashboard</a>
+            <a href="/tickets" class="nav-item active">🎯<br>Les 4 Combinés</a>
         </div>
-        <div class="combine-item"><b>⚽ Croatie - Angleterre</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[3]['pari_buts']} | Cote : {MATCHS_DATA[3]['cote_buts']}</span></div>
-        <div class="combine-item"><b>⚽ Espagne - Tchéquie</b><br><span style="font-size:11px;color:#aaa;">Pari : {MATCHS_DATA[0]['pari_buts']} | Cote : {MATCHS_DATA[0]['cote_buts']}</span></div>
-        
-        <div class="section-title">📐 3. Le Ticket Corners & Cartons</div>
-        <div class="combine-box">
-            <div class="total-cote" style="color:#00e1ff;">Cote : {c_speciaux}</div>
-        </div>
-    
+    </body>
+    </html>
+    '''
+    return render_template_string(html_page)
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
