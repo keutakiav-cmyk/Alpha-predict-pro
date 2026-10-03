@@ -175,4 +175,4 @@ def combine():
     top_3 = matchs[:3]
     cote_totale = 1.0
     for m in top_3:
-        
+    
